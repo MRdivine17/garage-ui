@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garage UI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="garage-container" class="hidden">
+        <div class="garage-wrapper">
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search vehicle by plate or name">
+            </div>
+            
+            <div class="vehicles-list" id="vehicles-list">
+                <!-- Vehicle items will be dynamically added here -->
+            </div>
+            
+            <div class="footer">
+                <span id="vehicle-count">Total vehicles: 0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfer Modal -->
+    <div id="transfer-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Transfer Vehicle</h2>
+                <button class="modal-close" onclick="closeTransferModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="transfer-info">
+                    <div class="transfer-vehicle-info">
+                        <img id="transfer-vehicle-image" src="" alt="Vehicle" class="transfer-vehicle-img">
+                        <div>
+                            <div class="transfer-vehicle-name" id="transfer-vehicle-name"></div>
+                            <div class="transfer-vehicle-plate" id="transfer-vehicle-plate"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="target-player-id">Target Player Server ID</label>
+                    <input type="number" id="target-player-id" placeholder="Enter player server ID (e.g., 1, 2, 3...)" min="1">
+                    <small>Enter the server ID of the player you want to transfer this vehicle to</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeTransferModal()">Cancel</button>
+                <button class="btn-confirm" onclick="confirmTransfer()">Transfer Vehicle</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
