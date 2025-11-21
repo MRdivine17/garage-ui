@@ -2,11 +2,38 @@
 ---@type table<string, number>
 local activeVehicles = {}
 
+-- Function to search for a vehicle in the world by plate
+local function FindVehicleByPlate(plate)
+    print("^3[GARAGE] Searching for vehicle with plate:", plate, "^0")
+    local vehicles = GetAllVehicles()
+    print("^3[GARAGE] Total vehicles in world:", #vehicles, "^0")
+    
+    for _, vehicle in ipairs(vehicles) do
+        if DoesEntityExist(vehicle) then
+            local vehiclePlate = GetVehicleNumberPlateText(vehicle)
+            if vehiclePlate then
+                -- Trim and compare plates
+                local trimmedPlate = vehiclePlate:gsub("%s+", "")
+                local searchPlate = plate:gsub("%s+", "")
+                
+                if trimmedPlate == searchPlate then
+                    print("^2[GARAGE] Found matching vehicle! Entity:", vehicle, "Plate:", vehiclePlate, "^0")
+                    return vehicle
+                end
+            end
+        end
+    end
+    print("^1[GARAGE] No matching vehicle found in world^0")
+    return nil
+end
+
 lib.callback.register('lunar_garage:getOwnedVehicles', function(source, index, society)
     local player = Framework.getPlayerFromId(source)
     if not player then return end
     
     local garage = Config.Garages[index]
+    print("^3[GARAGE] ========== Getting Owned Vehicles ==========^0")
+    print("^3[GARAGE] Player:", source, "Garage Index:", index, "Society:", tostring(society), "^0")
 
     if society then
         local vehicles = MySQL.query.await(Queries.getGarageSociety, {
@@ -14,25 +41,52 @@ lib.callback.register('lunar_garage:getOwnedVehicles', function(source, index, s
         })
 
         for _, vehicle in ipairs(vehicles) do
+            print("^3[GARAGE] Checking vehicle - Plate:", vehicle.plate, "Stored:", vehicle.stored, "^0")
+            
             if vehicle.stored == 1 or vehicle.stored == true then
                 vehicle.state = 'in_garage'
-            elseif activeVehicles[vehicle.plate] then
-                local entity = activeVehicles[vehicle.plate]
-                if not DoesEntityExist(entity) then
-                    activeVehicles[vehicle.plate] = nil
-                    vehicle.state = 'in_impound'
-                elseif GetVehiclePetrolTankHealth(entity) <= 0 or GetVehicleBodyHealth(entity) <= 0 then
-                    DeleteEntity(entity)
-                    activeVehicles[vehicle.plate] = nil
-                    vehicle.state = 'in_impound'
-                else
-                    vehicle.state = 'out_garage'
-                end
+                vehicle.location = nil
+                print("^2[GARAGE] → Status: IN_GARAGE^0")
             else
-                vehicle.state = 'in_impound'
+                -- First check activeVehicles cache
+                local entity = activeVehicles[vehicle.plate]
+                print("^3[GARAGE] Checking cache for plate:", vehicle.plate, "Found:", tostring(entity ~= nil), "^0")
+                
+                -- If not in cache or entity doesn't exist, search the world
+                if not entity or not DoesEntityExist(entity) then
+                    entity = FindVehicleByPlate(vehicle.plate)
+                    if entity then
+                        activeVehicles[vehicle.plate] = entity
+                        local trimmedPlate = vehicle.plate:gsub("%s+", "")
+                        activeVehicles[trimmedPlate] = entity
+                    end
+                end
+                
+                -- Now determine state based on entity
+                if entity and DoesEntityExist(entity) then
+                    if GetVehiclePetrolTankHealth(entity) <= 0 or GetVehicleBodyHealth(entity) <= 0 then
+                        print("^1[GARAGE] → Vehicle destroyed^0")
+                        DeleteEntity(entity)
+                        activeVehicles[vehicle.plate] = nil
+                        vehicle.state = 'in_impound'
+                        vehicle.location = nil
+                    else
+                        print("^2[GARAGE] → Status: OUT_GARAGE^0")
+                        vehicle.state = 'out_garage'
+                        local coords = GetEntityCoords(entity)
+                        vehicle.location = { x = coords.x, y = coords.y, z = coords.z }
+                        print("^2[GARAGE] → Location:", coords.x, coords.y, coords.z, "^0")
+                    end
+                else
+                    print("^1[GARAGE] → Status: IN_IMPOUND (not found)^0")
+                    activeVehicles[vehicle.plate] = nil
+                    vehicle.state = 'in_impound'
+                    vehicle.location = nil
+                end
             end
         end
 
+        print("^3[GARAGE] ========== End Getting Vehicles ==========^0")
         return vehicles
     else
         local vehicles = MySQL.query.await(Queries.getGarage, {
@@ -40,25 +94,52 @@ lib.callback.register('lunar_garage:getOwnedVehicles', function(source, index, s
         })
 
         for _, vehicle in ipairs(vehicles) do
+            print("^3[GARAGE] Checking vehicle - Plate:", vehicle.plate, "Stored:", vehicle.stored, "^0")
+            
             if vehicle.stored == 1 or vehicle.stored == true then
                 vehicle.state = 'in_garage'
-            elseif activeVehicles[vehicle.plate] then
-                local entity = activeVehicles[vehicle.plate]
-                if not DoesEntityExist(entity) then
-                    activeVehicles[vehicle.plate] = nil
-                    vehicle.state = 'in_impound'
-                elseif not DoesEntityExist(entity) or GetVehiclePetrolTankHealth(entity) <= 0 or GetVehicleBodyHealth(entity) <= 0 then
-                    DeleteEntity(entity)
-                    activeVehicles[vehicle.plate] = nil
-                    vehicle.state = 'in_impound'
-                else
-                    vehicle.state = 'out_garage'
-                end
+                vehicle.location = nil
+                print("^2[GARAGE] → Status: IN_GARAGE^0")
             else
-                vehicle.state = 'in_impound'
+                -- First check activeVehicles cache
+                local entity = activeVehicles[vehicle.plate]
+                print("^3[GARAGE] Checking cache for plate:", vehicle.plate, "Found:", tostring(entity ~= nil), "^0")
+                
+                -- If not in cache or entity doesn't exist, search the world
+                if not entity or not DoesEntityExist(entity) then
+                    entity = FindVehicleByPlate(vehicle.plate)
+                    if entity then
+                        activeVehicles[vehicle.plate] = entity
+                        local trimmedPlate = vehicle.plate:gsub("%s+", "")
+                        activeVehicles[trimmedPlate] = entity
+                    end
+                end
+                
+                -- Now determine state based on entity
+                if entity and DoesEntityExist(entity) then
+                    if GetVehiclePetrolTankHealth(entity) <= 0 or GetVehicleBodyHealth(entity) <= 0 then
+                        print("^1[GARAGE] → Vehicle destroyed^0")
+                        DeleteEntity(entity)
+                        activeVehicles[vehicle.plate] = nil
+                        vehicle.state = 'in_impound'
+                        vehicle.location = nil
+                    else
+                        print("^2[GARAGE] → Status: OUT_GARAGE^0")
+                        vehicle.state = 'out_garage'
+                        local coords = GetEntityCoords(entity)
+                        vehicle.location = { x = coords.x, y = coords.y, z = coords.z }
+                        print("^2[GARAGE] → Location:", coords.x, coords.y, coords.z, "^0")
+                    end
+                else
+                    print("^1[GARAGE] → Status: IN_IMPOUND (not found)^0")
+                    activeVehicles[vehicle.plate] = nil
+                    vehicle.state = 'in_impound'
+                    vehicle.location = nil
+                end
             end
         end
 
+        print("^3[GARAGE] ========== End Getting Vehicles ==========^0")
         return vehicles
     end
 end)
@@ -127,21 +208,74 @@ lib.callback.register('lunar_garage:takeOutVehicle', function(source, index, pla
     })
 
     if vehicle then
+        print("^3[GARAGE] ========== Taking Out Vehicle ==========^0")
+        print("^3[GARAGE] Player:", source, "Plate:", plate, "^0")
+        
+        -- Update database first
         MySQL.update.await(Queries.setStoredVehicle, { 0, plate })
+        
         local garage = Config.Garages[index]
         local coords = garage.SpawnPosition
         local props = json.decode(vehicle.mods or vehicle.vehicle)
-        local entity = Utils.createVehicle(props.model, coords, type)
-
-        if entity == 0 then return end
-
-        while NetworkGetEntityOwner(entity) == -1 do Wait(0) end
-
-        local netId, owner = NetworkGetNetworkIdFromEntity(entity), NetworkGetEntityOwner(entity)
         
-        TriggerClientEvent('lunar_garage:setVehicleProperties', owner, netId, props)
+        -- Create vehicle with owner for better sync
+        local entity = Utils.createVehicle(props.model, coords, type, source)
 
+        if entity == 0 then 
+            print("^1[GARAGE] Failed to create vehicle entity^0")
+            MySQL.update.await(Queries.setStoredVehicle, { 1, plate }) -- Revert
+            return 
+        end
+
+        -- Wait for network owner to be assigned
+        local timeout = 0
+        while NetworkGetEntityOwner(entity) == -1 and timeout < 200 do 
+            Wait(10)
+            timeout = timeout + 1
+        end
+
+        if timeout >= 200 then
+            print("^1[GARAGE] Network owner timeout^0")
+            DeleteEntity(entity)
+            MySQL.update.await(Queries.setStoredVehicle, { 1, plate }) -- Revert
+            return
+        end
+
+        local netId = NetworkGetNetworkIdFromEntity(entity)
+        local owner = NetworkGetEntityOwner(entity)
+        
+        print("^2[GARAGE] Network owner assigned:", owner, "NetID:", netId, "^0")
+        
+        -- Set vehicle properties on the owner's client
+        TriggerClientEvent('lunar_garage:setVehicleProperties', owner, netId, props)
+        
+        -- Also broadcast to nearby players for better sync
+        local playerCoords = GetEntityCoords(GetPlayerPed(source))
+        local nearbyPlayers = lib.getNearbyPlayers(playerCoords, 100.0, true)
+        
+        for _, nearbyPlayer in ipairs(nearbyPlayers) do
+            if nearbyPlayer.id ~= owner then
+                TriggerClientEvent('lunar_garage:setVehicleProperties', nearbyPlayer.id, netId, props)
+            end
+        end
+
+        -- Store in activeVehicles with both original and trimmed plate
+        local trimmedPlate = plate:gsub("%s+", "")
         activeVehicles[plate] = entity
+        activeVehicles[trimmedPlate] = entity
+        
+        -- Set entity state with plate for tracking
+        Entity(entity).state:set('vehiclePlate', plate, true)
+        Entity(entity).state:set('vehicleOwner', player:getIdentifier(), true)
+        
+        print("^2[GARAGE] Vehicle spawned successfully!^0")
+        print("^2[GARAGE] Entity:", entity, "NetID:", netId, "Owner:", owner, "^0")
+        print("^2[GARAGE] Stored with plates:", plate, "and", trimmedPlate, "^0")
+        
+        -- Notify nearby players to refresh their UI if open
+        TriggerClientEvent('lunar_garage:vehicleStateChanged', -1, plate, 'out_garage')
+        
+        print("^3[GARAGE] ========== End Taking Out Vehicle ==========^0")
 
         return netId
     end
@@ -227,10 +361,15 @@ lib.callback.register('lunar_garage:saveVehicle', function(source, props, netId)
             end
         end)
 
-        -- Remove from active vehicles tracking (try both formats)
+        -- Remove from active vehicles tracking (try all formats)
         activeVehicles[props.plate] = nil
         activeVehicles[dbPlate] = nil
         activeVehicles[originalPlate] = nil
+        local trimmedPlate = dbPlate:gsub("%s+", "")
+        activeVehicles[trimmedPlate] = nil
+
+        -- Notify all clients that vehicle state changed
+        TriggerClientEvent('lunar_garage:vehicleStateChanged', -1, dbPlate, 'in_garage')
 
         print("^2[GARAGE DEBUG] Vehicle saved successfully!")
         print("^3[GARAGE DEBUG] ==========================================^0")
@@ -244,72 +383,125 @@ lib.callback.register('lunar_garage:saveVehicle', function(source, props, netId)
 end)
 
 lib.callback.register('lunar_garage:retrieveVehicle', function(source, index, plate, type)
-    if activeVehicles[plate] then return end
-
     local player = Framework.getPlayerFromId(source)
-    if not player then return end
+    if not player then 
+        print("^1[GARAGE DEBUG] Player not found for source:", source, "^0")
+        return false, nil 
+    end
+
+    print("^3[GARAGE DEBUG] ========== Retrieve Vehicle from Impound ==========")
+    print("^3[GARAGE DEBUG] Source:", source)
+    print("^3[GARAGE DEBUG] Plate:", plate)
+    print("^3[GARAGE DEBUG] Index:", index)
+    print("^3[GARAGE DEBUG] Type:", type)
+
+    -- Clean up the trimmed plate format
+    local trimmedPlate = plate:gsub("%s+", "")
+    
+    -- Check if vehicle entity actually exists in the world (not just in cache)
+    local existingEntity = activeVehicles[plate] or activeVehicles[trimmedPlate]
+    if existingEntity and DoesEntityExist(existingEntity) then
+        print("^1[GARAGE DEBUG] Vehicle already spawned and exists in world!^0")
+        print("^1[GARAGE DEBUG] Entity ID:", existingEntity, "^0")
+        TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = 'Vehicle is already out in the world'
+        })
+        return false, nil
+    else
+        -- Clean up stale cache entries
+        if existingEntity then
+            print("^3[GARAGE DEBUG] Cleaning up stale cache entry^0")
+            activeVehicles[plate] = nil
+            activeVehicles[trimmedPlate] = nil
+        end
+    end
 
     local vehicle = MySQL.single.await(Queries.getOwnedVehicle, {
         player:getIdentifier(), player:getJob(), plate
     })
 
-    if vehicle then
-        local impoundPrice = Config.ImpoundPrice
-        local bankMoney = player:getAccountMoney('bank')
-        local cashMoney = player:getAccountMoney('money')
+    if not vehicle then
+        -- Try with trimmed plate
+        vehicle = MySQL.single.await(Queries.getOwnedVehicle, {
+            player:getIdentifier(), player:getJob(), trimmedPlate
+        })
         
-        print("^3[GARAGE DEBUG] Retrieve vehicle attempt")
-        print("^3[GARAGE DEBUG] Impound Price:", impoundPrice)
-        print("^3[GARAGE DEBUG] Bank Money:", bankMoney)
-        print("^3[GARAGE DEBUG] Cash Money:", cashMoney)
-        
-        -- Check if player has enough money in bank or cash
-        if bankMoney >= impoundPrice then
-            -- Charge from bank
-            player:removeAccountMoney('bank', impoundPrice)
-            print("^2[GARAGE DEBUG] Charged $" .. impoundPrice .. " from bank^0")
-        elseif cashMoney >= impoundPrice then
-            -- Charge from cash
-            player:removeAccountMoney('money', impoundPrice)
-            print("^2[GARAGE DEBUG] Charged $" .. impoundPrice .. " from cash^0")
-        else
-            -- Not enough money in either account
-            print("^1[GARAGE DEBUG] Not enough money! Total: $" .. (bankMoney + cashMoney) .. " Required: $" .. impoundPrice .. "^0")
-            return false
+        if vehicle then
+            print("^2[GARAGE DEBUG] Vehicle found with trimmed plate^0")
+            plate = trimmedPlate -- Use trimmed plate for all operations
         end
-
-        -- Update stored status to 1 (vehicle is now stored/retrieved from impound)
-        MySQL.update.await(Queries.setStoredVehicle, { 1, plate })
-        print("^2[GARAGE DEBUG] Updated stored status to 1 for plate:", plate, "^0")
-
-        local impound = Config.Impounds[index]
-        local coords = impound.SpawnPosition
-        local props = json.decode(vehicle.mods or vehicle.vehicle)
-        local entity = Utils.createVehicle(props.model, coords, type)
-
-        if entity == 0 then return end
-
-        while NetworkGetEntityOwner(entity) == -1 do Wait(0) end
-
-        local netId, owner = NetworkGetNetworkIdFromEntity(entity), NetworkGetEntityOwner(entity)
-        
-        TriggerClientEvent('lunar_garage:setVehicleProperties', owner, netId, props)
-
-        activeVehicles[props.plate] = entity
-
-        print("^2[GARAGE DEBUG] Vehicle retrieved successfully!^0")
-        return true, netId
     end
 
-    return false
+    if not vehicle then
+        print("^1[GARAGE DEBUG] Vehicle not found in database^0")
+        TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = 'Vehicle not found'
+        })
+        return false, nil
+    end
+
+    print("^2[GARAGE DEBUG] Vehicle found in database^0")
+    print("^2[GARAGE DEBUG] Current stored status:", vehicle.stored)
+
+    local impoundPrice = Config.ImpoundPrice
+    local cashMoney = player:getAccountMoney('money')
+    
+    print("^3[GARAGE DEBUG] Impound Price:", impoundPrice)
+    print("^3[GARAGE DEBUG] Player Cash Money:", cashMoney)
+    
+    -- Check if player has enough cash
+    if cashMoney < impoundPrice then
+        print("^1[GARAGE DEBUG] Not enough cash! Has: $" .. cashMoney .. " Required: $" .. impoundPrice .. "^0")
+        TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = 'Not enough money! You need $' .. impoundPrice
+        })
+        return false, nil
+    end
+    
+    -- Remove money from cash
+    local removed = player:removeAccountMoney('money', impoundPrice)
+    print("^2[GARAGE DEBUG] Money removal result:", tostring(removed), "^0")
+    print("^2[GARAGE DEBUG] Charged $" .. impoundPrice .. " from cash^0")
+
+    -- Set stored to 1 - vehicle is now stored in garage after retrieval
+    local updateResult = MySQL.update.await(Queries.setStoredVehicle, { 1, plate })
+    print("^2[GARAGE DEBUG] Updated stored status to 1 (vehicle is now in garage) for plate:", plate, "^0")
+    print("^2[GARAGE DEBUG] Database update affected rows:", updateResult, "^0")
+
+    -- IMMEDIATELY notify clients that vehicle state changed
+    TriggerClientEvent('lunar_garage:vehicleStateChanged', -1, plate, 'in_garage')
+    print("^2[GARAGE DEBUG] Sent immediate UI refresh event^0")
+    
+    print("^3[GARAGE DEBUG] ========== End Retrieve Vehicle ==========^0")
+    
+    TriggerClientEvent('ox_lib:notify', source, {
+        type = 'success',
+        description = 'Vehicle retrieved from impound for $' .. impoundPrice .. ' and stored in garage'
+    })
+    
+    -- Return success without netId since we're not spawning
+    return true, nil
 end)
 
 lib.callback.register('lunar_garage:getVehicleCoords', function(source, plate)
     local entity = activeVehicles[plate]
 
-    if not entity then return end
+    if not entity or not DoesEntityExist(entity) then 
+        -- Try to find it in the world
+        entity = FindVehicleByPlate(plate)
+        if entity then
+            activeVehicles[plate] = entity
+        else
+            activeVehicles[plate] = nil
+            return nil
+        end
+    end
 
-    return GetEntityCoords(entity)
+    local coords = GetEntityCoords(entity)
+    return { x = coords.x, y = coords.y, z = coords.z }
 end)
 
 lib.callback.register('lunar_garage:transferVehicle', function(source, plate, targetPlayerId)

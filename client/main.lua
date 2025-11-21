@@ -21,21 +21,57 @@ local function getVehicleType(model)
     end
 end
 
--- Taken from ox_lib, but higher timeout value and modified
+-- Enhanced vehicle properties setter with better OneSync handling
 RegisterNetEvent('lunar_garage:setVehicleProperties', function(netId, data)
     local timeout = 10000
+    local startTime = GetGameTimer()
 
-    while not NetworkDoesEntityExistWithNetworkId(netId) and timeout > 0 do
+    -- Wait for entity to exist in network
+    while not NetworkDoesEntityExistWithNetworkId(netId) and (GetGameTimer() - startTime) < timeout do
         Wait(0)
-        timeout -= 1
     end
 
-    if timeout > 0 then
-        local vehicle = NetToVeh(netId)
+    if (GetGameTimer() - startTime) >= timeout then
+        print("^1[GARAGE CLIENT] Timeout waiting for network entity:", netId, "^0")
+        return
+    end
 
-        if NetworkGetEntityOwner(vehicle) ~= cache.playerId then return end
+    local vehicle = NetToVeh(netId)
+    
+    if not vehicle or vehicle == 0 then
+        print("^1[GARAGE CLIENT] Invalid vehicle entity from netId:", netId, "^0")
+        return
+    end
 
-        lib.setVehicleProperties(vehicle, data)
+    -- Wait for entity to be fully networked
+    local networkTimeout = 0
+    while not NetworkGetEntityIsNetworked(vehicle) and networkTimeout < 100 do
+        Wait(10)
+        networkTimeout = networkTimeout + 1
+    end
+
+    if networkTimeout >= 100 then
+        print("^1[GARAGE CLIENT] Vehicle not networked:", vehicle, "^0")
+        return
+    end
+
+    -- Set properties regardless of ownership for better sync
+    -- The owner will set it first, then nearby players will sync
+    local isOwner = NetworkGetEntityOwner(vehicle) == cache.playerId
+    
+    if isOwner then
+        print("^2[GARAGE CLIENT] Setting properties as owner - Vehicle:", vehicle, "^0")
+    else
+        print("^3[GARAGE CLIENT] Syncing properties as nearby player - Vehicle:", vehicle, "^0")
+    end
+    
+    -- Use a protected call to prevent errors from breaking sync
+    local success, err = pcall(lib.setVehicleProperties, vehicle, data)
+    
+    if not success then
+        print("^1[GARAGE CLIENT] Error setting vehicle properties:", err, "^0")
+    else
+        print("^2[GARAGE CLIENT] Properties set successfully^0")
     end
 end)
 
@@ -129,10 +165,14 @@ end
 
 local function openGarageVehicles(args)
     local index, society = args.index, args.society
+    
+    print("^3[GARAGE CLIENT] Fetching vehicles for garage index:", index, "^0")
     local vehicles = lib.callback.await('lunar_garage:getOwnedVehicles', false, index, society)
     
     if #vehicles == 0 then
         ShowNotification(society and locale('no_society_vehicles') or locale('no_owned_vehicles'), 'error')
+        currentOpenGarage = nil
+        currentOpenSociety = false
         return
     end
 
@@ -147,6 +187,7 @@ local function openGarageVehicles(args)
             label = GetVehicleLabel(props.model),
             plate = props.plate,
             state = vehicle.state,
+            location = vehicle.location,
             fuelLevel = props.fuelLevel or 100.0,
             engineHealth = vehicle.engine_health or props.engineHealth or 1000,
             bodyHealth = vehicle.body_health or props.bodyHealth or 1000,
@@ -156,6 +197,12 @@ local function openGarageVehicles(args)
             customImage = vehicle.vehicle_image
         })
     end
+
+    -- Store current garage for refresh
+    currentOpenGarage = index
+    currentOpenSociety = society or false
+    
+    print("^2[GARAGE CLIENT] Opening UI with", #vehiclesData, "vehicles^0")
 
     -- Open custom UI
     Framework.OpenGarageUI(vehiclesData, index, society)
@@ -218,74 +265,138 @@ local function retrieveVehicle(args)
     ---@type integer, VehicleProperties
     local index, props in args
     
+    print("^3[GARAGE CLIENT] ========== Retrieving Vehicle from Impound ==========")
+    print("^3[GARAGE CLIENT] Plate:", props.plate)
+    print("^3[GARAGE CLIENT] Model:", props.model)
+    print("^3[GARAGE CLIENT] Index:", index)
+    
+    if not props.model then
+        print("^1[GARAGE CLIENT] Invalid vehicle model^0")
+        ShowNotification('Invalid vehicle data', 'error')
+        return
+    end
+    
     lib.requestModel(props.model)
     local type = getVehicleType(props.model)
+    
+    print("^3[GARAGE CLIENT] Calling server to retrieve vehicle...^0")
     local success, netId = lib.callback.await('lunar_garage:retrieveVehicle', false, index, props.plate, type)
 
-    if not success then
-        ShowNotification(locale('not_enough_money'), 'error')
+    print("^3[GARAGE CLIENT] Server response - Success:", tostring(success), "NetID:", tostring(netId))
+
+    -- Check if retrieval failed
+    if not success or success == false then
+        print("^1[GARAGE CLIENT] Failed to retrieve vehicle - Server returned false^0")
+        -- Server already sends notification with specific error
         return
     end
 
-    while not NetworkDoesEntityExistWithNetworkId(netId) do Wait(0) end
+    -- If no netId, vehicle was retrieved to garage (not spawned)
+    if not netId then
+        print("^2[GARAGE CLIENT] Vehicle retrieved to garage successfully (not spawned)^0")
+        print("^3[GARAGE CLIENT] ========== End Retrieve Vehicle ==========^0")
+        return
+    end
+
+    print("^2[GARAGE CLIENT] Waiting for vehicle entity with netId:", netId, "^0")
+    local timeout = 0
+    while not NetworkDoesEntityExistWithNetworkId(netId) and timeout < 5000 do 
+        Wait(10)
+        timeout = timeout + 10
+    end
+
+    if timeout >= 5000 then
+        print("^1[GARAGE CLIENT] Timeout waiting for vehicle entity^0")
+        ShowNotification('Failed to spawn vehicle - entity timeout', 'error')
+        return
+    end
 
     local vehicle = NetworkGetEntityFromNetworkId(netId)
+    
+    if not vehicle or vehicle == 0 then
+        print("^1[GARAGE CLIENT] Invalid vehicle entity^0")
+        ShowNotification('Failed to spawn vehicle - invalid entity', 'error')
+        return
+    end
+    
+    print("^2[GARAGE CLIENT] Vehicle entity found:", vehicle, "^0")
 
+    -- Set properties in a thread
     CreateThread(function()
-        while true do
+        local attempts = 0
+        while attempts < 100 do
             if NetworkGetEntityOwner(vehicle) == cache.playerId then
-                lib.setVehicleProperties(vehicle, props)
+                local success, err = pcall(lib.setVehicleProperties, vehicle, props)
+                if success then
+                    print("^2[GARAGE CLIENT] Properties set by owner^0")
+                else
+                    print("^1[GARAGE CLIENT] Error setting properties:", err, "^0")
+                end
                 return
             end
 
             local plate = GetVehicleNumberPlateText(vehicle)
-
             if plate == props.plate then
+                print("^2[GARAGE CLIENT] Plate matches, properties already set^0")
                 return
             end
 
-            Wait(0)
+            Wait(10)
+            attempts = attempts + 1
         end
+        print("^3[GARAGE CLIENT] Property setting timeout^0")
     end)
 
-    -- The player doesn't get warped in the vehicle sometimes, repeat it and timeout after 2000 attempts
-    for _ = 1, 2000 do
+    -- Warp player into vehicle
+    print("^2[GARAGE CLIENT] Warping player into vehicle...^0")
+    for i = 1, 2000 do
         TaskWarpPedIntoVehicle(cache.ped, vehicle, -1)
         
         if GetVehiclePedIsIn(cache.ped, false) == vehicle then
+            print("^2[GARAGE CLIENT] Player warped successfully^0")
             break
         end
 
         Wait(0)
     end
 
-    SetVehicleFuel(vehicle, props.fuelLevel)
+    SetVehicleFuel(vehicle, props.fuelLevel or 100.0)
     SetVehicleOwner(props.plate)
+    
+    print("^2[GARAGE CLIENT] Vehicle retrieved successfully!^0")
+    print("^3[GARAGE CLIENT] ========== End Retrieve Vehicle ==========^0")
 end
 
 -- Event handler for taking out vehicle from custom UI
 RegisterNetEvent('lunar_garage:client:takeOutVehicle', function(data)
-    -- Check if it's an impounded vehicle
-    if data.vehicle.isImpound or data.vehicle.state == 'in_impound' then
+    -- Check if it's an impounded vehicle (vehicle not found in world and stored = 0)
+    if data.vehicle.state == 'in_impound' then
+        -- This is a true impound - vehicle is lost/destroyed, needs to be retrieved with payment
+        -- UI will close automatically when server sends 'retrieving' state
         retrieveVehicle({
             index = data.garageIndex,
             props = data.vehicle.props
         })
     else
+        -- Normal garage vehicle (stored = 1) - take out for free
+        Framework.CloseGarageUI()
         SpawnVehicle({
             index = data.garageIndex,
             props = data.vehicle.props
         })
     end
-    Framework.CloseGarageUI()
 end)
 
 local function openImpoundVehicles(args)
     local index, society = args.index, args.society
+    
+    print("^3[GARAGE CLIENT] Fetching impounded vehicles for index:", index, "^0")
     local vehicles = lib.callback.await('lunar_garage:getImpoundedVehicles', false, index, society)
     
     if #vehicles == 0 then
         ShowNotification(locale('no_impounded_vehicles'), 'error')
+        currentOpenGarage = nil
+        currentOpenSociety = false
         return
     end
 
@@ -311,6 +422,12 @@ local function openImpoundVehicles(args)
         })
     end
 
+    -- Store current garage for refresh (use negative index for impounds to differentiate)
+    currentOpenGarage = -index -- Negative to indicate impound
+    currentOpenSociety = society or false
+    
+    print("^2[GARAGE CLIENT] Opening impound UI with", #vehiclesData, "vehicles^0")
+
     -- Open custom UI
     Framework.OpenGarageUI(vehiclesData, index, society)
 end
@@ -320,13 +437,54 @@ local function openImpound(index)
     openImpoundVehicles({ index = index, society = false })
 end
 
+-- Store current garage/impound index for refresh
+local currentOpenGarage = nil
+local currentOpenSociety = false
+
+-- Listen for vehicle state changes to refresh UI
+RegisterNetEvent('lunar_garage:vehicleStateChanged', function(plate, newState)
+    print("^3[GARAGE CLIENT] Vehicle state changed for plate:", plate, "New state:", newState, "^0")
+    
+    -- If state is "retrieving", close UI immediately (no refresh needed)
+    if newState == 'retrieving' then
+        print("^2[GARAGE CLIENT] Vehicle being retrieved - closing UI immediately^0")
+        Framework.CloseGarageUI()
+        return
+    end
+    
+    -- If a garage UI is currently open, refresh it
+    if currentOpenGarage then
+        print("^3[GARAGE CLIENT] Refreshing UI...^0")
+        
+        -- Small delay to ensure database is updated
+        Wait(100)
+        
+        -- Refresh the appropriate UI
+        if currentOpenGarage < 0 then
+            -- Negative index means impound
+            openImpoundVehicles({ index = math.abs(currentOpenGarage), society = currentOpenSociety })
+        else
+            -- Positive index means garage
+            openGarageVehicles({ index = currentOpenGarage, society = currentOpenSociety })
+        end
+    end
+end)
+
+-- Clear current garage when UI is closed
+RegisterNetEvent('lunar_garage:client:uiClosed', function()
+    print("^3[GARAGE CLIENT] UI closed, clearing current garage^0")
+    currentOpenGarage = nil
+    currentOpenSociety = false
+end)
+
 -- Event handler for retrieving impounded vehicle from custom UI
 RegisterNetEvent('lunar_garage:client:retrieveVehicle', function(data)
+    Framework.CloseGarageUI()
+    
     retrieveVehicle({
         index = data.garageIndex,
         props = data.vehicle.props
     })
-    Framework.CloseGarageUI()
 end) 
 
 local function garagePrompt(index, data)

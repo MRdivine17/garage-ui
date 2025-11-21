@@ -126,8 +126,22 @@ function createVehicleElement(vehicle, index) {
     const bodyPercent = Math.round((bodyHealth / 1000) * 100);
     
     const statusText = getStatusText(vehicle.state);
-    const buttonText = vehicle.state === 'in_impound' ? 'Retrieve' : vehicle.state === 'out_garage' ? 'Locate' : 'Take Out';
-    const buttonIcon = vehicle.state === 'in_impound' ? getIcon('package-check') : vehicle.state === 'out_garage' ? getIcon('map-pin') : getIcon('car-front');
+    
+    // Determine button text and icon based on state
+    let buttonText, buttonIcon, buttonClass;
+    if (vehicle.state === 'in_impound') {
+        buttonText = 'Retrieve';
+        buttonIcon = getIcon('package-check');
+        buttonClass = 'btn-retrieve';
+    } else if (vehicle.state === 'out_garage') {
+        buttonText = 'Locate';
+        buttonIcon = getIcon('map-pin');
+        buttonClass = 'btn-locate';
+    } else {
+        buttonText = 'Take Out';
+        buttonIcon = getIcon('car-front');
+        buttonClass = 'btn-takeout';
+    }
     
     // Determine status class for styling
     let statusClass = 'available';
@@ -196,15 +210,17 @@ function createVehicleElement(vehicle, index) {
                     </div>
                 </div>
                 <div class="actions-container">
-                    <button class="action-btn btn-takeout" 
+                    <button class="action-btn ${buttonClass}" 
                             data-action="takeout" 
-                            data-index="${index}">
+                            data-index="${index}"
+                            data-state="${vehicle.state}">
                         ${buttonIcon}
                         ${buttonText}
                     </button>
                     <button class="action-btn btn-transfer" 
                             data-action="transfer" 
-                            data-index="${index}">
+                            data-index="${index}"
+                            ${vehicle.state !== 'in_garage' ? 'disabled title="Vehicle must be in garage to transfer"' : ''}>
                         ${getIcon('arrow-right-left')}
                         Transfer
                     </button>
@@ -321,9 +337,9 @@ function getStatusText(state) {
         case 'in_garage':
             return '✓ Available in Garage';
         case 'out_garage':
-            return '⚠ Vehicle is Out';
+            return '📍 Vehicle is Out - Click Locate';
         case 'in_impound':
-            return '⚠ Vehicle Impounded';
+            return '🚫 Vehicle Not Found - Impounded';
         default:
             return 'Unknown';
     }

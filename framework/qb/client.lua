@@ -57,6 +57,9 @@ function Framework.CloseGarageUI()
     SendNUIMessage({
         action = 'closeGarage'
     })
+    
+    -- Notify main script that UI is closed
+    TriggerEvent('lunar_garage:client:uiClosed')
 end
 
 -- NUI Callbacks for Garage UI
@@ -71,8 +74,8 @@ RegisterNUICallback('enableCursor', function(data, cb)
 end)
 
 RegisterNUICallback('takeOutVehicle', function(data, cb)
-    TriggerEvent('lunar_garage:client:takeOutVehicle', data)
     cb('ok')
+    TriggerEvent('lunar_garage:client:takeOutVehicle', data)
 end)
 
 RegisterNUICallback('transferVehicle', function(data, cb)
@@ -105,12 +108,32 @@ end)
 
 RegisterNUICallback('locateVehicle', function(data, cb)
     local vehicle = data.vehicle
+    
+    -- Try to get fresh coordinates from server
     local coords = lib.callback.await('lunar_garage:getVehicleCoords', false, vehicle.plate)
+    
+    -- If server doesn't have it, use cached location from vehicle data
+    if not coords and vehicle.location then
+        coords = vehicle.location
+    end
+    
     if coords then
         SetNewWaypoint(coords.x, coords.y)
-        ShowNotification('Vehicle location marked on GPS', 'success')
+        lib.notify({
+            title = 'Vehicle Located',
+            description = 'GPS waypoint set to your vehicle location',
+            type = 'success',
+            icon = 'map-pin',
+            iconColor = '#00ff00'
+        })
     else
-        ShowNotification('Unable to locate vehicle', 'error')
+        lib.notify({
+            title = 'Vehicle Not Found',
+            description = 'Unable to locate your vehicle. It may have been destroyed.',
+            type = 'error',
+            icon = 'triangle-exclamation',
+            iconColor = '#ff0000'
+        })
     end
     Framework.CloseGarageUI()
     cb('ok')
