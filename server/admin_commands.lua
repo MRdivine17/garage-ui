@@ -108,13 +108,16 @@ lib.addCommand(Config.AdminCommands.AddVehicle, {
             1
         })
     elseif Framework.name == 'qb-core' then
-        query = 'INSERT INTO player_vehicles (citizenid, plate, vehicle, mods, type, state) VALUES (?, ?, ?, ?, ?, ?)'
+        -- `stored` = 1 so the vehicle immediately shows as parked in the garage
+        -- (the garage logic keys off `stored`, not Qbox's native `state`).
+        query = 'INSERT INTO player_vehicles (citizenid, plate, vehicle, mods, type, state, stored) VALUES (?, ?, ?, ?, ?, ?, ?)'
         MySQL.insert.await(query, {
             targetPlayer:getIdentifier(),
             plate,
             vehicleModel,
             json.encode(vehicleProps),
             'car',
+            1,
             1
         })
     end

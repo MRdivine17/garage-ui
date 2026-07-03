@@ -25,17 +25,29 @@ end
 
 function GetVehicleFuel(vehicle)
     if GetResourceState('LegacyFuel') == 'started' then
-        local fuelLevel = exports['LegacyFuel']:GetFuel(vehicle, fuelLevel)
+        local fuelLevel = exports['LegacyFuel']:GetFuel(vehicle)
         return math.floor(fuelLevel * 100) / 100
-    else
-        return GetVehicleFuelLevel(vehicle)
     end
+
+    -- ox_fuel / most modern fuel scripts expose the level via a statebag.
+    local state = Entity(vehicle).state.fuel
+    if state ~= nil then
+        return math.floor(state * 100) / 100
+    end
+
+    return GetVehicleFuelLevel(vehicle)
 end
 
 function SetVehicleFuel(vehicle, fuelLevel)
     if GetResourceState('LegacyFuel') == 'started' then
         exports['LegacyFuel']:SetFuel(vehicle, fuelLevel)
+        return
     end
+
+    -- ox_fuel and similar read the replicated statebag; also set the native
+    -- level so scripts reading it directly stay in sync.
+    Entity(vehicle).state:set('fuel', fuelLevel + 0.0, true)
+    SetVehicleFuelLevel(vehicle, fuelLevel + 0.0)
 end
 
 function SetVehicleOwner(plate)

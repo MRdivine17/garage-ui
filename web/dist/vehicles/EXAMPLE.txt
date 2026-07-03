@@ -1,0 +1,30 @@
+EXAMPLE: How to add custom vehicle images
+
+Let's say you have a custom vehicle with spawn code "lamborghini"
+
+1. Find/create an image of the Lamborghini
+2. Rename it to: lamborghini.png (or .jpg or .webp)
+3. Place it in this folder (html/vehicles/)
+4. Restart lunar_garage resource
+
+Your folder should look like:
+html/vehicles/
+├── lamborghini.png  ← Your image here!
+├── README.md
+└── QUICK_START.md
+
+The garage will now show your custom Lamborghini image!
+
+---
+
+MULTIPLE VEHICLES EXAMPLE:
+
+html/vehicles/
+├── lamborghini.png
+├── bmwm5.jpg
+├── ferrarif40.webp
+├── customcar1.png
+├── customcar2.png
+└── mycustomvehicle.jpg
+
+Each filename MUST match the spawn code exactly!

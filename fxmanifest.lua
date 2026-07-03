@@ -9,12 +9,11 @@ version '2.0.3'
 
 files {
     'locales/*.json',
-    'html/index.html',
-    'html/style.css',
-    'html/script.js'
+    'web/dist/index.html',
+    'web/dist/**/*'
 }
 
-ui_page 'html/index.html'
+ui_page 'web/dist/index.html'
 
 shared_scripts {
     '@ox_lib/init.lua',
