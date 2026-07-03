@@ -90,7 +90,7 @@ export function VehicleItem({ vehicle, onTakeout, onTransfer }: VehicleItemProps
           <div className="stats-container">
             <StatBar icon="fuel" label="Fuel" percent={fuelPercent} kind="fuel" />
             <StatBar
-              icon="settings"
+              icon="gauge"
               label="Engine"
               percent={enginePercent}
               kind="engine"

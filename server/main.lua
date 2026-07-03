@@ -28,21 +28,35 @@ local function FindVehicleByPlate(plate)
 end
 
 lib.callback.register('lunar_garage:getOwnedVehicles', function(source, index, society)
+    if not Framework or not Framework.getPlayerFromId then
+        print('^1[GARAGE] Framework not initialised - no qbox/qb/esx adapter loaded (check start order: qbx_core before garage-ui)^0')
+        return {}
+    end
+
     local player = Framework.getPlayerFromId(source)
-    if not player then return end
-    
+    if not player then
+        print(('^1[GARAGE] getPlayerFromId returned nil for source %s (qbx_core:GetPlayer failed - player not loaded?)^0'):format(source))
+        return {}
+    end
+
     local garage = Config.Garages[index]
     print("^3[GARAGE] ========== Getting Owned Vehicles ==========^0")
     print("^3[GARAGE] Player:", source, "Garage Index:", index, "Society:", tostring(society), "^0")
 
     if society then
-        local vehicles = MySQL.query.await(Queries.getGarageSociety, {
+        local ok, vehicles = pcall(MySQL.query.await, Queries.getGarageSociety, {
             player:getJob(), garage.Type
         })
 
+        if not ok then
+            print(('^1[GARAGE] DB query failed: %s^0'):format(tostring(vehicles)))
+            print('^1[GARAGE] Run install/qbox.sql - player_vehicles is likely missing the job/type/stored columns^0')
+            return {}
+        end
+
         for _, vehicle in ipairs(vehicles) do
             print("^3[GARAGE] Checking vehicle - Plate:", vehicle.plate, "Stored:", vehicle.stored, "^0")
-            
+
             if vehicle.stored == 1 or vehicle.stored == true then
                 vehicle.state = 'in_garage'
                 vehicle.location = nil
@@ -89,13 +103,19 @@ lib.callback.register('lunar_garage:getOwnedVehicles', function(source, index, s
         print("^3[GARAGE] ========== End Getting Vehicles ==========^0")
         return vehicles
     else
-        local vehicles = MySQL.query.await(Queries.getGarage, {
+        local ok, vehicles = pcall(MySQL.query.await, Queries.getGarage, {
             player:getIdentifier(), garage.Type
         })
 
+        if not ok then
+            print(('^1[GARAGE] DB query failed: %s^0'):format(tostring(vehicles)))
+            print('^1[GARAGE] Run install/qbox.sql - player_vehicles is likely missing the job/type/stored columns^0')
+            return {}
+        end
+
         for _, vehicle in ipairs(vehicles) do
             print("^3[GARAGE] Checking vehicle - Plate:", vehicle.plate, "Stored:", vehicle.stored, "^0")
-            
+
             if vehicle.stored == 1 or vehicle.stored == true then
                 vehicle.state = 'in_garage'
                 vehicle.location = nil

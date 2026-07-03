@@ -168,7 +168,17 @@ local function openGarageVehicles(args)
     
     print("^3[GARAGE CLIENT] Fetching vehicles for garage index:", index, "^0")
     local vehicles = lib.callback.await('lunar_garage:getOwnedVehicles', false, index, society)
-    
+
+    -- nil means the server callback errored (player not loaded, or the
+    -- player_vehicles table is missing the job/type/stored columns).
+    if not vehicles then
+        print("^1[GARAGE CLIENT] Server returned nil - check the SERVER console for a SQL/Framework error and run install/qbox.sql^0")
+        ShowNotification('Failed to load vehicles - check server console', 'error')
+        currentOpenGarage = nil
+        currentOpenSociety = false
+        return
+    end
+
     if #vehicles == 0 then
         ShowNotification(society and locale('no_society_vehicles') or locale('no_owned_vehicles'), 'error')
         currentOpenGarage = nil
@@ -392,7 +402,15 @@ local function openImpoundVehicles(args)
     
     print("^3[GARAGE CLIENT] Fetching impounded vehicles for index:", index, "^0")
     local vehicles = lib.callback.await('lunar_garage:getImpoundedVehicles', false, index, society)
-    
+
+    if not vehicles then
+        print("^1[GARAGE CLIENT] Server returned nil - check the SERVER console for a SQL/Framework error and run install/qbox.sql^0")
+        ShowNotification('Failed to load vehicles - check server console', 'error')
+        currentOpenGarage = nil
+        currentOpenSociety = false
+        return
+    end
+
     if #vehicles == 0 then
         ShowNotification(locale('no_impounded_vehicles'), 'error')
         currentOpenGarage = nil
