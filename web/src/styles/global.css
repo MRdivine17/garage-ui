@@ -15,8 +15,14 @@
     --dark-red-rgb: 142, 22, 22;
     --red-rgb: 216, 64, 64;
     --light-rgb: 238, 238, 238;
+}
 
-    color-scheme: dark;
+/* NUI must stay transparent so the game shows through when the UI is closed.
+   Never set `color-scheme: dark` here — CEF paints an opaque backdrop and the
+   whole screen turns black. */
+html,
+body {
+    background: transparent !important;
 }
 
 * {
